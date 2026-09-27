@@ -22,6 +22,9 @@
 #include "NDS.h"
 #include "DSi.h"
 #include "ARM.h"
+#ifdef WEB_DEBUGGER
+#include "web-debug-hooks.h"
+#endif
 #include "ARMInterpreter.h"
 #include "AREngine.h"
 #include "ARMJIT.h"
@@ -664,6 +667,10 @@ void ARMv5Impl<mode>::Execute()
 
     while (NDS.ARM9Timestamp < NDS.ARM9Target)
     {
+#ifdef WEB_DEBUGGER
+        const u32 webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
+        if (!WebDebugger::BeforeInstruction(this, webAddress)) return;
+#endif
 #ifdef JIT_ENABLED
         if constexpr (mode == CPUExecuteMode::JIT)
         {
@@ -753,6 +760,9 @@ void ARMv5Impl<mode>::Execute()
                 {
                     NDS.ARM9Timestamp = NDS.ARM9Target;
                 }
+#ifdef WEB_DEBUGGER
+                WebDebugger::AfterInstruction(this, webAddress);
+#endif
                 break;
             }
             /*if (NDS::IF[0] & NDS::IE[0])
@@ -766,6 +776,9 @@ void ARMv5Impl<mode>::Execute()
 
         NDS.ARM9Timestamp += Cycles;
         Cycles = 0;
+#ifdef WEB_DEBUGGER
+        WebDebugger::AfterInstruction(this, webAddress);
+#endif
     }
 
     if (Halted == 2)
@@ -799,6 +812,10 @@ void ARMv4Impl<mode>::Execute()
 
     while (NDS.ARM7Timestamp < NDS.ARM7Target)
     {
+#ifdef WEB_DEBUGGER
+        const u32 webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
+        if (!WebDebugger::BeforeInstruction(this, webAddress)) return;
+#endif
 #ifdef JIT_ENABLED
         if constexpr (mode == CPUExecuteMode::JIT)
         {
@@ -882,6 +899,9 @@ void ARMv4Impl<mode>::Execute()
                 {
                     NDS.ARM7Timestamp = NDS.ARM7Target;
                 }
+#ifdef WEB_DEBUGGER
+                WebDebugger::AfterInstruction(this, webAddress);
+#endif
                 break;
             }
             /*if (NDS::IF[1] & NDS::IE[1])
@@ -894,6 +914,9 @@ void ARMv4Impl<mode>::Execute()
 
         NDS.ARM7Timestamp += Cycles;
         Cycles = 0;
+#ifdef WEB_DEBUGGER
+        WebDebugger::AfterInstruction(this, webAddress);
+#endif
     }
 
     if (Halted == 2)
@@ -1161,6 +1184,9 @@ void ARMv4Impl<mode>::DataRead8(u32 addr, u32* val)
 {
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 1, false);
+#endif
         
     *val = BusRead8(addr);
     DataRegion = addr;
@@ -1173,6 +1199,9 @@ void ARMv4Impl<mode>::DataRead16(u32 addr, u32* val)
     addr &= ~1;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 2, false);
+#endif
 
     *val = BusRead16(addr);
     DataRegion = addr;
@@ -1185,6 +1214,9 @@ void ARMv4Impl<mode>::DataRead32(u32 addr, u32* val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, false);
+#endif
 
     *val = BusRead32(addr);
     DataRegion = addr;
@@ -1197,6 +1229,9 @@ void ARMv4Impl<mode>::DataRead32S(u32 addr, u32* val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, false);
+#endif
 
     *val = BusRead32(addr);
     DataCycles += NDS.ARM7MemTimings[addr >> 15][3];
@@ -1207,6 +1242,9 @@ void ARMv4Impl<mode>::DataWrite8(u32 addr, u8 val)
 {
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 1, true);
+#endif
 
     BusWrite8(addr, val);
     DataRegion = addr;
@@ -1219,6 +1257,9 @@ void ARMv4Impl<mode>::DataWrite16(u32 addr, u16 val)
     addr &= ~1;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 2, true);
+#endif
 
     BusWrite16(addr, val);
     DataRegion = addr;
@@ -1231,6 +1272,9 @@ void ARMv4Impl<mode>::DataWrite32(u32 addr, u32 val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, true);
+#endif
 
     BusWrite32(addr, val);
     DataRegion = addr;
@@ -1243,6 +1287,9 @@ void ARMv4Impl<mode>::DataWrite32S(u32 addr, u32 val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, true);
+#endif
 
     BusWrite32(addr, val);
     DataCycles += NDS.ARM7MemTimings[addr >> 15][3];

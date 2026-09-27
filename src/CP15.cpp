@@ -21,6 +21,9 @@
 #include "NDS.h"
 #include "DSi.h"
 #include "ARM.h"
+#ifdef WEB_DEBUGGER
+#include "web-debug-hooks.h"
+#endif
 #include "Platform.h"
 #include "ARMJIT_Memory.h"
 #include "ARMJIT.h"
@@ -826,6 +829,9 @@ void ARMv5Impl<mode>::DataRead8(u32 addr, u32* val)
     DataRegion = addr;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 1, false);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -858,6 +864,9 @@ void ARMv5Impl<mode>::DataRead16(u32 addr, u32* val)
     addr &= ~1;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 2, false);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -890,6 +899,9 @@ void ARMv5Impl<mode>::DataRead32(u32 addr, u32* val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, false);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -914,6 +926,9 @@ void ARMv5Impl<mode>::DataRead32S(u32 addr, u32* val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Read);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, false);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -944,6 +959,9 @@ void ARMv5Impl<mode>::DataWrite8(u32 addr, u8 val)
     DataRegion = addr;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 1, true);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -977,6 +995,9 @@ void ARMv5Impl<mode>::DataWrite16(u32 addr, u16 val)
     addr &= ~1;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 2, true);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -1010,6 +1031,9 @@ void ARMv5Impl<mode>::DataWrite32(u32 addr, u32 val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, true);
+#endif
 
     if (addr < ITCMSize)
     {
@@ -1035,6 +1059,9 @@ void ARMv5Impl<mode>::DataWrite32S(u32 addr, u32 val)
     addr &= ~3;
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbCheckD(addr, Gdb::WatchptKind::Write);
+#ifdef WEB_DEBUGGER
+    WebDebugger::MemoryAccess(this, addr, 4, true);
+#endif
 
     if (addr < ITCMSize)
     {
