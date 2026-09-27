@@ -79,6 +79,43 @@ void LocalMP::End(int inst)
     Mutex_Unlock(MPQueueLock);
 }
 
+void LocalMP::LogPacket(int sender, int receiver, u32 type, const u8* packet,
+                        int length, u64 timestamp, bool received) noexcept
+{
+    // Called under MPQueueLock. No allocation, JavaScript, or I/O on the
+    // emulation path. A full ring drops its oldest observation, not a packet.
+    if (LogCount == kLogCapacity)
+    {
+        LogRead = (LogRead + 1) % kLogCapacity;
+        --LogCount;
+        ++LogDropped;
+    }
+    auto& entry = PacketLog[(LogRead + LogCount) % kLogCapacity];
+    entry.Timestamp = timestamp;
+    entry.Sequence = ++LogSequence;
+    entry.Type = type;
+    entry.SenderID = static_cast<u16>(sender);
+    entry.ReceiverID = static_cast<s16>(receiver);
+    entry.Length = static_cast<u16>(length);
+    entry.Received = received;
+    if (length > 0) memcpy(entry.Payload.data(), packet, length);
+    ++LogCount;
+}
+
+u32 LocalMP::DrainPacketLog(PacketLogEntry* out, u32 capacity, u32* dropped) noexcept
+{
+    if (!out && capacity) return 0;
+    Mutex_Lock(MPQueueLock);
+    if (dropped) { *dropped = LogDropped; LogDropped = 0; }
+    const u32 count = capacity < LogCount ? capacity : LogCount;
+    for (u32 i = 0; i < count; ++i)
+        out[i] = PacketLog[(LogRead + i) % kLogCapacity];
+    LogRead = (LogRead + count) % kLogCapacity;
+    LogCount -= count;
+    Mutex_Unlock(MPQueueLock);
+    return count;
+}
+
 void LocalMP::FIFORead(int inst, int fifo, void* buf, int len) noexcept
 {
     u8* data;
@@ -176,6 +213,9 @@ int LocalMP::SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 time
     if (len)
         FIFOWrite(inst, nfifo, packet, len);
 
+    LogPacket(inst, type == 2 ? MPStatus.MPHostinst : -1,
+              pktheader.Type, packet, len, timestamp, false);
+
     if (type == 1)
     {
         // NOTE: this is not guarded against, say, multiple multiplay games happening on the same machine
@@ -249,6 +289,9 @@ int LocalMP::RecvPacketGeneric(int inst, u8* packet, bool block, u64* timestamp)
             if (pktheader.Type == 1)
                 LastHostID = pktheader.SenderID;
         }
+
+        LogPacket(pktheader.SenderID, inst, pktheader.Type, packet,
+                  pktheader.Length, pktheader.Timestamp, true);
 
         if (timestamp) *timestamp = pktheader.Timestamp;
         Mutex_Unlock(MPQueueLock);
@@ -347,6 +390,8 @@ u16 LocalMP::RecvReplies(int inst, u8* packets, u64 timestamp, u16 aidmask)
             u32 aid = (pktheader.Type >> 16);
             FIFORead(inst, 1, &packets[(aid-1)*1024], pktheader.Length);
             ret |= (1 << aid);
+            LogPacket(pktheader.SenderID, inst, pktheader.Type,
+                      &packets[(aid-1)*1024], pktheader.Length, pktheader.Timestamp, true);
         }
 
         myinstmask |= (1 << pktheader.SenderID);

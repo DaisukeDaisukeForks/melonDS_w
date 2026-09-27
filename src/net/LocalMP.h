@@ -22,6 +22,7 @@
 #include "types.h"
 #include "Platform.h"
 #include "MPInterface.h"
+#include <array>
 
 namespace melonDS
 {
@@ -41,6 +42,21 @@ constexpr u32 kMaxFrameSize = 0x948;
 class LocalMP : public MPInterface
 {
 public:
+    // Fixed-size, bounded observation queue. Records are copied from the real
+    // LocalMP path; reading the log never consumes emulated network packets.
+    struct PacketLogEntry
+    {
+        u64 Timestamp;
+        u32 Sequence;
+        u32 Type;
+        u16 SenderID;
+        s16 ReceiverID; // -1 for broadcast, otherwise the receiving instance
+        u16 Length;
+        bool Received;
+        std::array<u8, kMaxFrameSize> Payload;
+    };
+    static constexpr u32 kLogCapacity = 256;
+
     LocalMP() noexcept;
     LocalMP(const LocalMP&) = delete;
     LocalMP& operator=(const LocalMP&) = delete;
@@ -61,11 +77,17 @@ public:
     int RecvHostPacket(int inst, u8* data, u64* timestamp);
     u16 RecvReplies(int inst, u8* data, u64 timestamp, u16 aidmask);
 
+    // Returns up to capacity entries, oldest first, removing them from the log.
+    // 'dropped' is the number of entries overwritten since the last drain.
+    u32 DrainPacketLog(PacketLogEntry* out, u32 capacity, u32* dropped) noexcept;
+
 private:
     void FIFORead(int inst, int fifo, void* buf, int len) noexcept;
     void FIFOWrite(int inst, int fifo, void* buf, int len) noexcept;
     int SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 timestamp) noexcept;
     int RecvPacketGeneric(int inst, u8* packet, bool block, u64* timestamp) noexcept;
+    void LogPacket(int sender, int receiver, u32 type, const u8* packet,
+                   int length, u64 timestamp, bool received) noexcept;
 
     Platform::Mutex* MPQueueLock;
     MPStatusData MPStatus {};
@@ -76,6 +98,11 @@ private:
 
     int LastHostID = -1;
     Platform::Semaphore* SemPool[32] {};
+    std::array<PacketLogEntry, kLogCapacity> PacketLog {};
+    u32 LogRead = 0;
+    u32 LogCount = 0;
+    u32 LogSequence = 0;
+    u32 LogDropped = 0;
 };
 }
 
