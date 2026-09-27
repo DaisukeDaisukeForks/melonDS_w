@@ -82,6 +82,7 @@ void LocalMP::End(int inst)
 void LocalMP::LogPacket(int sender, int receiver, u32 type, const u8* packet,
                         int length, u64 timestamp, bool received) noexcept
 {
+    if (length < 0 || length > kMaxFrameSize || (length && !packet)) return;
     // Called under MPQueueLock. No allocation, JavaScript, or I/O on the
     // emulation path. A full ring drops its oldest observation, not a packet.
     if (LogCount == kLogCapacity)
