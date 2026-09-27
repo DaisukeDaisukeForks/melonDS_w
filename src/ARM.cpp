@@ -668,8 +668,9 @@ void ARMv5Impl<mode>::Execute()
     while (NDS.ARM9Timestamp < NDS.ARM9Target)
     {
 #ifdef WEB_DEBUGGER
-        const u32 webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
+        u32 webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
         if (!WebDebugger::BeforeInstruction(this, webAddress)) return;
+        webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
 #endif
 #ifdef JIT_ENABLED
         if constexpr (mode == CPUExecuteMode::JIT)
@@ -813,8 +814,9 @@ void ARMv4Impl<mode>::Execute()
     while (NDS.ARM7Timestamp < NDS.ARM7Target)
     {
 #ifdef WEB_DEBUGGER
-        const u32 webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
+        u32 webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
         if (!WebDebugger::BeforeInstruction(this, webAddress)) return;
+        webAddress = R[15] - ((CPSR & 0x20) ? 2 : 4);
 #endif
 #ifdef JIT_ENABLED
         if constexpr (mode == CPUExecuteMode::JIT)
