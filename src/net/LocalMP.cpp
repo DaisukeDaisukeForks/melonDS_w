@@ -394,6 +394,11 @@ u16 LocalMP::RecvReplies(int inst, u8* packets, u64 timestamp, u16 aidmask)
             LogPacket(pktheader.SenderID, inst, pktheader.Type,
                       &packets[(aid-1)*1024], pktheader.Length, pktheader.Timestamp, true);
         }
+        else
+        {
+            LogPacket(pktheader.SenderID, inst, pktheader.Type,
+                      nullptr, 0, pktheader.Timestamp, true);
+        }
 
         myinstmask |= (1 << pktheader.SenderID);
         if (((myinstmask & curinstmask) == curinstmask) ||
