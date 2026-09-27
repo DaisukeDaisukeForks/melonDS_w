@@ -248,6 +248,7 @@ class ARMJIT;
 
 class NDS
 {
+    friend int ImportDeSmuMEState(NDS&, const u8*, size_t);
 private:
 #ifdef JIT_ENABLED
     bool EnableJIT;
