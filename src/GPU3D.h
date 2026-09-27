@@ -87,6 +87,7 @@ class NDS;
 
 class GPU3D
 {
+    friend int ImportDeSmuMEState(NDS&, const u8*, size_t);
 public:
     GPU3D(melonDS::GPU& gpu) noexcept;
     ~GPU3D() noexcept = default;

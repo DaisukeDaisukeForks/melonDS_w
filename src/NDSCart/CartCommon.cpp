@@ -58,6 +58,16 @@ CartCommon::CartCommon(std::unique_ptr<u8[]>&& rom, u32 len, u32 chipid, bool ba
 
 CartCommon::~CartCommon() = default;
 
+#ifdef __EMSCRIPTEN__
+bool CartCommon::ShareROMFrom(const CartCommon& other)
+{
+    if (CartType != Retail || other.CartType != Retail || ROMLength != other.ROMLength
+        || memcmp(ROM.get(), other.ROM.get(), ROMLength) != 0) return false;
+    ROM = other.ROM;
+    return true;
+}
+#endif
+
 u32 CartCommon::Checksum() const
 {
     const NDSHeader& header = GetHeader();

@@ -224,6 +224,7 @@ private:
 
 class SPU
 {
+    friend int ImportDeSmuMEState(NDS&, const u8*, size_t);
 public:
     explicit SPU(melonDS::NDS& nds, AudioBitDepth bitdepth, AudioInterpolation interpolation, double outputSampleRate);
     ~SPU();

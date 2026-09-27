@@ -87,6 +87,11 @@ public:
     [[nodiscard]] u32 ID() const { return ChipID; }
     [[nodiscard]] const u8* GetROM() const { return ROM.get(); }
     [[nodiscard]] u32 GetROMLength() const { return ROMLength; }
+#ifdef __EMSCRIPTEN__
+    // Only immutable retail ROM bytes may be shared. Save, command and CPU
+    // state remain private to each cartridge/instance.
+    bool ShareROMFrom(const CartCommon& other);
+#endif
 
 protected:
     u32 ROMRead32();
@@ -95,7 +100,11 @@ protected:
 
     bool ResetState;
 
+#ifdef __EMSCRIPTEN__
+    std::shared_ptr<u8[]> ROM = nullptr;
+#else
     std::unique_ptr<u8[]> ROM = nullptr;
+#endif
     u32 ROMLength = 0;
     u32 ROMMask = 0;
     u32 ChipID = 0;

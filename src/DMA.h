@@ -29,6 +29,7 @@ class Savestate;
 
 class DMA
 {
+    friend int ImportDeSmuMEState(NDS&, const u8*, size_t);
 public:
     DMA(u32 cpu, u32 num, NDS& nds);
     ~DMA() = default;
