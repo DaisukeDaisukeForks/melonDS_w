@@ -78,6 +78,9 @@ public:
 
     void Begin(int inst);
     void End(int inst);
+    // In-process multi-console frontends supply each radio's actual addresses.
+    // This is routing metadata only: emulated frames are never rewritten.
+    void SetPeer(int inst, const u8* mac, const u8* bssid);
 
     int SendPacket(int inst, u8* data, int len, u64 timestamp);
     int RecvPacket(int inst, u8* data, u64* timestamp);
@@ -107,6 +110,9 @@ private:
     u32 ReplyReadOffset[16] {};
 
     int LastHostID = -1;
+    std::array<std::array<u8, 6>, 16> PeerMAC {};
+    std::array<std::array<u8, 6>, 16> PeerBSSID {};
+    u16 PeersKnown = 0;
     Platform::Semaphore* SemPool[32] {};
     std::array<PacketLogEntry, kLogCapacity> PacketLog {};
     u32 LogRead = 0;
