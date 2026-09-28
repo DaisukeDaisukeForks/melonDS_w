@@ -26,6 +26,7 @@
 
 namespace melonDS
 {
+class Savestate;
 struct MPStatusData
 {
     u16 ConnectedBitmask; // bitmask of which instances are ready to send/receive packets
@@ -65,6 +66,7 @@ public:
     ~LocalMP() noexcept;
 
     void Process() {}
+    void DoTransportState(Savestate* state, void (*semaphoreState)(Savestate*, Platform::Semaphore*));
 
     void Begin(int inst);
     void End(int inst);

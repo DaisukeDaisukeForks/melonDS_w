@@ -254,6 +254,10 @@ void Wifi::SetAccessPointSSID(const char* name, size_t length)
 {
     WifiAP->SetSSID(name, length);
 }
+void Wifi::DoTransportState(Savestate* state)
+{
+    WifiAP->DoTransportState(state);
+}
 
 void Wifi::DoSavestate(Savestate* file)
 {

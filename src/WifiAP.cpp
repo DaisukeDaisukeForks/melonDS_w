@@ -21,6 +21,7 @@
 #include "NDS.h"
 #include "Wifi.h"
 #include "WifiAP.h"
+#include "Savestate.h"
 #include "Platform.h"
 
 #ifndef __WIN32__
@@ -29,6 +30,19 @@
 
 namespace melonDS
 {
+void WifiAP::DoTransportState(Savestate* state)
+{
+    u32 length = static_cast<u32>(SSID.size());
+    state->Var32(&length);
+    if (length > 32) { state->Error = true; return; }
+    if (!state->Saving) SSID.resize(length);
+    state->VarArray(SSID.data(), length);
+    state->Var64(&USCounter); state->Var16(&SeqNo); state->VarBool(&BeaconDue);
+    state->VarArray(PacketBuffer, sizeof(PacketBuffer));
+    state->VarArray(&PacketLen, sizeof(PacketLen)); state->VarArray(&RXNum, sizeof(RXNum));
+    state->VarArray(LANBuffer, sizeof(LANBuffer)); state->VarArray(&ClientStatus, sizeof(ClientStatus));
+    if (PacketLen < 0 || PacketLen > static_cast<int>(sizeof(PacketBuffer))) state->Error = true;
+}
 using Platform::Log;
 using Platform::LogLevel;
 

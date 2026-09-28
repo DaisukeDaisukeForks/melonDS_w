@@ -19,6 +19,7 @@
 #include <cstring>
 
 #include "LocalMP.h"
+#include "Savestate.h"
 
 using namespace melonDS;
 using namespace melonDS::Platform;
@@ -28,6 +29,19 @@ using Platform::LogLevel;
 
 namespace melonDS
 {
+void LocalMP::DoTransportState(Savestate* state, void (*semaphoreState)(Savestate*, Platform::Semaphore*))
+{
+    Mutex_Lock(MPQueueLock);
+    state->VarArray(&MPStatus, sizeof(MPStatus));
+    state->VarArray(MPPacketQueue, sizeof(MPPacketQueue));
+    state->VarArray(MPReplyQueue, sizeof(MPReplyQueue));
+    state->VarArray(PacketReadOffset, sizeof(PacketReadOffset));
+    state->VarArray(ReplyReadOffset, sizeof(ReplyReadOffset));
+    state->VarArray(&LastHostID, sizeof(LastHostID));
+    for (auto* semaphore : SemPool) semaphoreState(state, semaphore);
+    if (!state->Saving) { LogRead = 0; LogCount = 0; LogDropped = 0; }
+    Mutex_Unlock(MPQueueLock);
+}
 
 LocalMP::LocalMP() noexcept :
     MPQueueLock(Mutex_Create())
