@@ -269,7 +269,7 @@ public: // TODO: Encapsulate the rest of these members
     u8 ARM7MemTimings[0x20000][4];
     u32 ARM7Regions[0x20000];
 
-    u32 NumFrames;
+    u32 NumFrames = 0;
     u32 NumLagFrames;
     bool LagFrameFlag;
 
