@@ -20,6 +20,7 @@
 #define WIFIAP_H
 
 #include "types.h"
+#include <string>
 
 namespace melonDS
 {
@@ -31,6 +32,7 @@ public:
     WifiAP(Wifi* client, void* userdata);
     ~WifiAP();
     void Reset();
+    void SetSSID(const char* value, size_t length) { SSID.assign(value, length > 32 ? 32 : length); }
 
     static const char* APName;
     static const u8 APMac[6];
@@ -43,6 +45,7 @@ public:
     int RecvPacket(u8* data);
 
 private:
+    std::string SSID = APName;
     Wifi* Client;
     void* UserData;
 

@@ -176,8 +176,8 @@ int WifiAP::HandleManagementFrame(const u8* data, int len)
             PWRITE_16(p, 0x0021); // capability
             PWRITE_8(p, 0x01); PWRITE_8(p, 0x02); PWRITE_8(p, 0x82); PWRITE_8(p, 0x84); // rates
             PWRITE_8(p, 0x03); PWRITE_8(p, 0x01); PWRITE_8(p, APChannel); // current channel
-            PWRITE_8(p, 0x00); PWRITE_8(p, strlen(APName));
-            memcpy(p, APName, strlen(APName)); p += strlen(APName);
+            PWRITE_8(p, 0x00); PWRITE_8(p, SSID.size());
+            memcpy(p, SSID.data(), SSID.size()); p += SSID.size();
 
             PacketLen = PLEN(p, base);
             RXNum = 1;
@@ -333,8 +333,8 @@ int WifiAP::RecvPacket(u8* data)
         PWRITE_8(p, 0x01); PWRITE_8(p, 0x02); PWRITE_8(p, 0x82); PWRITE_8(p, 0x84); // rates
         PWRITE_8(p, 0x03); PWRITE_8(p, 0x01); PWRITE_8(p, APChannel); // current channel
         PWRITE_8(p, 0x05); PWRITE_8(p, 0x04); PWRITE_8(p, 0); PWRITE_8(p, 0); PWRITE_8(p, 0); PWRITE_8(p, 0); // TIM
-        PWRITE_8(p, 0x00); PWRITE_8(p, strlen(APName));
-        memcpy(p, APName, strlen(APName)); p += strlen(APName);
+        PWRITE_8(p, 0x00); PWRITE_8(p, SSID.size());
+        memcpy(p, SSID.data(), SSID.size()); p += SSID.size();
 
         PALIGN_4(p, base);
         PWRITE_32(p, 0xDEADBEEF); // checksum. doesn't matter for now

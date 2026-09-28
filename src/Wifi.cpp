@@ -146,6 +146,16 @@ void Wifi::Reset()
 
     const Firmware& fw = NDS.SPI.GetFirmware();
     const auto& fwheader = fw.GetHeader();
+#ifdef __EMSCRIPTEN__
+    // Each browser instance has its own virtual AP. Honor its restored
+    // firmware profile without changing the global default AP name.
+    WifiAP->SetSSID(WifiAP::APName, strlen(WifiAP::APName));
+    for (const auto& ap : fw.GetAccessPoints()) {
+        if (ap.Status != Firmware::AccessPointStatus::Normal || !ap.SSID[0]) continue;
+        WifiAP->SetSSID(ap.SSID, strnlen(ap.SSID, sizeof(ap.SSID)));
+        break;
+    }
+#endif
 
     RFVersion = fwheader.RFChipType;
     memset(RFRegs, 0, 4*0x40);
