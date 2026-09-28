@@ -250,6 +250,11 @@ void Wifi::Reset()
     WifiAP->Reset();
 }
 
+void Wifi::SetAccessPointSSID(const char* name, size_t length)
+{
+    WifiAP->SetSSID(name, length);
+}
+
 void Wifi::DoSavestate(Savestate* file)
 {
     file->Section("WIFI");

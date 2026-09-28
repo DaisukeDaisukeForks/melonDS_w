@@ -314,7 +314,9 @@ void GPU::DoSavestate(Savestate* file) noexcept
 
 void GPU::SetRenderer(std::unique_ptr<Renderer>&& renderer) noexcept
 {
-    SyncAllVRAMCaptures();
+    // First construction has no old renderer/captures. Reused heap memory
+    // can contain capture flags before Reset, but Rend is still null here.
+    if (Rend) SyncAllVRAMCaptures();
 
     bool good = false;
     if (renderer)

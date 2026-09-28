@@ -161,6 +161,7 @@ public:
     Wifi(melonDS::NDS& nds);
     ~Wifi();
     void Reset();
+    void SetAccessPointSSID(const char* name, size_t length);
     void DoSavestate(Savestate* file);
 
     void SetPowerCnt(u32 val);
