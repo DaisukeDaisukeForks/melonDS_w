@@ -595,6 +595,9 @@ void ARM::TriggerIRQ()
 template <CPUExecuteMode mode>
 void ARMv5Impl<mode>::PrefetchAbort()
 {
+#ifdef WEB_DEBUGGER
+    if (!WebDebugger::Exception(this, 8, this->R[15] - ((CPSR & 0x20) ? 4 : 8))) return;
+#endif
     Log(LogLevel::Warn, "ARM9: prefetch abort (%08X)\n", R[15]);
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbStub.Enter(GdbStub.IsConnected(), Gdb::TgtStatus::FaultIAcc, this->R[15] - ((CPSR & 0x20) ? 4 : 8));
@@ -621,6 +624,9 @@ void ARMv5Impl<mode>::PrefetchAbort()
 template <CPUExecuteMode mode>
 void ARMv5Impl<mode>::DataAbort()
 {
+#ifdef WEB_DEBUGGER
+    if (!WebDebugger::Exception(this, 7, this->R[15] - ((CPSR & 0x20) ? 4 : 8))) return;
+#endif
     Log(LogLevel::Warn, "ARM9: data abort (%08X)\n", R[15]);
     if constexpr (mode == CPUExecuteMode::InterpreterGDB)
         GdbStub.Enter(GdbStub.IsConnected(), Gdb::TgtStatus::FaultData, this->R[15] - ((CPSR & 0x20) ? 4 : 8));

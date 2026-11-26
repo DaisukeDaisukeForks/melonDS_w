@@ -1026,7 +1026,7 @@ u32 NDS::RunFrame()
                 target = ARM9Timestamp >> ARM9ClockShift;
                 CurCPU = 1;
 
-                while (ARM7Timestamp < target)
+                while (Running && ARM7Timestamp < target)
                 {
                     ARM7Target = target; // might be changed by a reschedule
 

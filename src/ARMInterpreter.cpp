@@ -23,6 +23,9 @@
 #include "ARMInterpreter_Branch.h"
 #include "ARMInterpreter_LoadStore.h"
 #include "Platform.h"
+#ifdef WEB_DEBUGGER
+#include "web-debug-hooks.h"
+#endif
 
 #ifdef GDBSTUB_ENABLED
 #include "debug/GdbStub.h"
@@ -36,6 +39,9 @@ namespace melonDS::ARMInterpreter
 
 void A_UNK(ARM* cpu)
 {
+#ifdef WEB_DEBUGGER
+    if (!WebDebugger::Exception(cpu, 9, cpu->R[15] - 8)) return;
+#endif
     Log(LogLevel::Warn, "undefined ARM%d instruction %08X @ %08X\n", cpu->Num?7:9, cpu->CurInstr, cpu->R[15]-8);
 #ifdef GDBSTUB_ENABLED
     cpu->GdbStub.Enter(cpu->GdbStub.IsConnected(), Gdb::TgtStatus::FaultInsn, cpu->R[15]-8);
@@ -54,6 +60,9 @@ void A_UNK(ARM* cpu)
 
 void T_UNK(ARM* cpu)
 {
+#ifdef WEB_DEBUGGER
+    if (!WebDebugger::Exception(cpu, 9, cpu->R[15] - 4)) return;
+#endif
     Log(LogLevel::Warn, "undefined THUMB%d instruction %04X @ %08X\n", cpu->Num?7:9, cpu->CurInstr, cpu->R[15]-4);
 #ifdef GDBSTUB_ENABLED
     cpu->GdbStub.Enter(cpu->GdbStub.IsConnected(), Gdb::TgtStatus::FaultInsn, cpu->R[15]-4);

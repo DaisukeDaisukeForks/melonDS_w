@@ -19,6 +19,8 @@
 #include <cstring>
 
 #include "LocalMP.h"
+#include <algorithm>
+#include "Savestate.h"
 
 using namespace melonDS;
 using namespace melonDS::Platform;
@@ -28,6 +30,30 @@ using Platform::LogLevel;
 
 namespace melonDS
 {
+// Routing metadata belongs to this in-process FIFO, not the emulated 802.11 frame.
+struct RoutedPacketHeader : MPPacketHeader { u32 Targets; };
+void LocalMP::DoTransportState(Savestate* state, void (*semaphoreState)(Savestate*, Platform::Semaphore*))
+{
+    Mutex_Lock(MPQueueLock);
+    state->VarArray(&MPStatus, sizeof(MPStatus));
+    state->VarArray(MPPacketQueue, sizeof(MPPacketQueue));
+    state->VarArray(MPReplyQueue, sizeof(MPReplyQueue));
+    state->VarArray(PacketReadOffset, sizeof(PacketReadOffset));
+    state->VarArray(ReplyReadOffset, sizeof(ReplyReadOffset));
+    state->VarArray(&LastHostID, sizeof(LastHostID));
+    state->Var16(&InterceptMask); state->VarArray(RouteMasks.data(), sizeof(RouteMasks)); state->Var32(&NextHeldId);
+    u32 heldCount = HeldPackets.size(); state->Var32(&heldCount);
+    if (heldCount > 64) { state->Error = true; Mutex_Unlock(MPQueueLock); return; }
+    if (!state->Saving) HeldPackets.resize(heldCount);
+    for (auto& packet : HeldPackets) {
+        state->VarArray(&packet, sizeof(packet));
+        if (packet.Sender < 0 || packet.Sender > 15 || packet.Length > kMaxFrameSize
+            || ((packet.Type & 0xffff) == 2 && packet.Length > 1024)) state->Error = true;
+    }
+    for (auto* semaphore : SemPool) semaphoreState(state, semaphore);
+    if (!state->Saving) { LogRead = 0; LogCount = 0; LogDropped = 0; PeersKnown = 0; }
+    Mutex_Unlock(MPQueueLock);
+}
 
 LocalMP::LocalMP() noexcept :
     MPQueueLock(Mutex_Create())
@@ -77,6 +103,61 @@ void LocalMP::End(int inst)
     Mutex_Lock(MPQueueLock);
     MPStatus.ConnectedBitmask &= ~(1 << inst);
     Mutex_Unlock(MPQueueLock);
+}
+void LocalMP::SetPeer(int inst, const u8* mac, const u8* bssid)
+{
+    if (inst < 0 || inst >= 16 || !mac || !bssid) return;
+    Mutex_Lock(MPQueueLock);
+    memcpy(PeerMAC[inst].data(), mac, 6);
+    memcpy(PeerBSSID[inst].data(), bssid, 6);
+    PeersKnown |= 1u << inst;
+    Mutex_Unlock(MPQueueLock);
+}
+void LocalMP::SetPacketInterceptor(int inst, bool enabled)
+{
+    Mutex_Lock(MPQueueLock);
+    if (enabled) InterceptMask |= 1u << inst; else InterceptMask &= ~(1u << inst);
+    Mutex_Unlock(MPQueueLock);
+}
+void LocalMP::SetPacketRoutes(int inst, u16 targets)
+{
+    Mutex_Lock(MPQueueLock); RouteMasks[inst] = targets; Mutex_Unlock(MPQueueLock);
+}
+void LocalMP::ClearPacketControl(int inst)
+{
+    Mutex_Lock(MPQueueLock);
+    InterceptMask &= ~(1u << inst); RouteMasks[inst] = 0xffff;
+    HeldPackets.erase(std::remove_if(HeldPackets.begin(), HeldPackets.end(), [inst](const HeldPacket& p) { return p.Sender == inst; }), HeldPackets.end());
+    Mutex_Unlock(MPQueueLock);
+}
+u32 LocalMP::CopyHeldPackets(int inst, HeldPacket* output, u32 capacity)
+{
+    Mutex_Lock(MPQueueLock);
+    u32 count = 0;
+    for (const auto& packet : HeldPackets) if (packet.Sender == inst && count < capacity) output[count++] = packet;
+    Mutex_Unlock(MPQueueLock); return count;
+}
+int LocalMP::CommitPacket(int inst, u32 id, bool drop, const u8* data, int length, int targets, double timestamp)
+{
+    if (length < -1 || length > kMaxFrameSize || (length > 0 && !data) || targets < -1 || targets > 65535) return -1;
+    HeldPacket packet {}; bool found = false;
+    Mutex_Lock(MPQueueLock);
+    for (auto it = HeldPackets.begin(); it != HeldPackets.end(); ++it) if (it->Sender == inst && it->Id == id) {
+        if (!drop && (it->Type & 0xffff) == 2 && length > 1024) { Mutex_Unlock(MPQueueLock); return -1; }
+        packet = *it; HeldPackets.erase(it); found = true; break;
+    }
+    Mutex_Unlock(MPQueueLock);
+    if (!found) return -2;
+    if (drop) return 0;
+    return SendPacketGeneric(inst, packet.Type, length < 0 ? packet.Payload.data() : data,
+        length < 0 ? packet.Length : length, timestamp < 0 ? packet.Timestamp : static_cast<u64>(timestamp), true,
+        targets < 0 ? packet.Targets : targets);
+}
+int LocalMP::InjectPacket(int inst, u32 type, const u8* data, int length, u64 timestamp, u16 targets)
+{
+    if ((type & 0xffff) > 3 || ((type & 0xffff) == 2 && ((type >> 16) < 1 || (type >> 16) > 15))
+        || ((type & 0xffff) == 2 && length > 1024)) return -1;
+    return SendPacketGeneric(inst, type, data, length, timestamp, true, targets);
 }
 
 void LocalMP::LogPacket(int sender, int receiver, u32 type, const u8* packet,
@@ -187,9 +268,9 @@ void LocalMP::FIFOWrite(int inst, int fifo, void* buf, int len) noexcept
     else           MPStatus.ReplyWriteOffset = offset;
 }
 
-int LocalMP::SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 timestamp) noexcept
+int LocalMP::SendPacketGeneric(int inst, u32 type, const u8* packet, int len, u64 timestamp, bool bypass, int targets) noexcept
 {
-    if (len > kMaxFrameSize)
+    if (len < 0 || len > kMaxFrameSize || (len && !packet))
     {
         Log(LogLevel::Warn, "wifi: attempting to send frame too big (len=%d max=%d)\n", len, kMaxFrameSize);
         return 0;
@@ -197,30 +278,57 @@ int LocalMP::SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 time
 
     Mutex_Lock(MPQueueLock);
 
+    if (!bypass && (InterceptMask & (1u << inst))) {
+        if (HeldPackets.size() >= 64) { ++LogDropped; Mutex_Unlock(MPQueueLock); return 0; }
+        HeldPacket held {}; held.Id = NextHeldId++; held.Sender = inst; held.Type = type;
+        held.Timestamp = timestamp; held.Targets = RouteMasks[inst]; held.Length = len;
+        if (len) memcpy(held.Payload.data(), packet, len);
+        HeldPackets.push_back(held); Mutex_Unlock(MPQueueLock); return len;
+    }
+
     u16 mask = MPStatus.ConnectedBitmask;
 
     // TODO: check if the FIFO is full!
 
-    MPPacketHeader pktheader;
+    RoutedPacketHeader pktheader {};
     pktheader.Magic = 0x4946494E;
     pktheader.SenderID = inst;
     pktheader.Type = type;
     pktheader.Length = len;
     pktheader.Timestamp = timestamp;
+    pktheader.Targets = targets < 0 ? RouteMasks[inst] : targets;
 
     type &= 0xFFFF;
+    int replyHost = MPStatus.MPHostinst;
+    if (type == 2 && (PeersKnown & (1u << inst)))
+    {
+        // Reply frames contain the real receiver at 12-byte TX header + 4.
+        // Empty replies still belong to this client's associated BSSID.
+        const u8* destination = len >= 22 ? packet + 16 : PeerBSSID[inst].data();
+        u16 hosts = 0;
+        replyHost = -1;
+        for (int i = 0; i < 16; ++i)
+            if (i != inst && (mask & PeersKnown & (1u << i))
+                && !memcmp(PeerMAC[i].data(), destination, 6))
+            {
+                hosts |= 1u << i;
+                replyHost = i;
+            }
+        pktheader.Targets &= hosts;
+        if (!pktheader.Targets) replyHost = -1;
+    }
     int nfifo = (type == 2) ? 1 : 0;
     FIFOWrite(inst, nfifo, &pktheader, sizeof(pktheader));
     if (len)
-        FIFOWrite(inst, nfifo, packet, len);
+        FIFOWrite(inst, nfifo, const_cast<u8*>(packet), len);
 
-    LogPacket(inst, type == 2 ? MPStatus.MPHostinst : -1,
+    LogPacket(inst, type == 2 ? replyHost : -1,
               pktheader.Type, packet, len, timestamp, false);
 
     if (type == 1)
     {
-        // NOTE: this is not guarded against, say, multiple multiplay games happening on the same machine
-        // we would need to pass the packet's SenderID through the wifi module for that
+        // Retained in the legacy transport snapshot; registered in-process
+        // peers route replies by receiver MAC rather than this global ID.
         MPStatus.MPHostinst = inst;
         MPStatus.MPReplyBitmask = 0;
         ReplyReadOffset[inst] = MPStatus.ReplyWriteOffset;
@@ -231,11 +339,13 @@ int LocalMP::SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 time
         MPStatus.MPReplyBitmask |= (1 << inst);
     }
 
-    Mutex_Unlock(MPQueueLock);
-
     if (type == 2)
     {
-        Semaphore_Post(SemPool[16 +  MPStatus.MPHostinst]);
+        // Every active reader shares this FIFO. Each must consume (or skip)
+        // every entry, otherwise its read cursor and semaphore count diverge
+        // as soon as another host receives a reply.
+        for (int i = 0; i < 16; ++i)
+            if (mask & (1u << i)) Semaphore_Post(SemPool[16 + i]);
     }
     else
     {
@@ -245,6 +355,10 @@ int LocalMP::SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 time
                 Semaphore_Post(SemPool[i]);
         }
     }
+
+    // Keep enqueue and notification atomic with Begin()/SendCmd(), both of
+    // which reset read cursors and semaphore counts under this same lock.
+    Mutex_Unlock(MPQueueLock);
 
     return len;
 }
@@ -260,7 +374,7 @@ int LocalMP::RecvPacketGeneric(int inst, u8* packet, bool block, u64* timestamp)
 
         Mutex_Lock(MPQueueLock);
 
-        MPPacketHeader pktheader = {};
+        RoutedPacketHeader pktheader = {};
         FIFORead(inst, 0, &pktheader, sizeof(pktheader));
 
         if (pktheader.Magic != 0x4946494E)
@@ -272,7 +386,7 @@ int LocalMP::RecvPacketGeneric(int inst, u8* packet, bool block, u64* timestamp)
             return 0;
         }
 
-        if (pktheader.SenderID == inst)
+        if (pktheader.SenderID == inst || !(pktheader.Targets & (1u << inst)))
         {
             // skip this packet
             PacketReadOffset[inst] += pktheader.Length;
@@ -327,15 +441,24 @@ int LocalMP::SendAck(int inst, u8* packet, int len, u64 timestamp)
 
 int LocalMP::RecvHostPacket(int inst, u8* packet, u64* timestamp)
 {
-    if (LastHostID != -1)
+    bool disconnected = false;
+    Mutex_Lock(MPQueueLock);
+    if (PeersKnown & (1u << inst))
     {
-        // check if the host is still connected
-
-        u16 curinstmask = MPStatus.ConnectedBitmask;
-
-        if (!(curinstmask & (1 << LastHostID)))
-            return -1;
+        bool known = false, connected = false;
+        for (int i = 0; i < 16; ++i)
+            if (i != inst && (PeersKnown & (1u << i))
+                && !memcmp(PeerMAC[i].data(), PeerBSSID[inst].data(), 6))
+            {
+                known = true;
+                connected |= (MPStatus.ConnectedBitmask & (1u << i)) != 0;
+            }
+        disconnected = known && !connected;
     }
+    else if (LastHostID != -1)
+        disconnected = !(MPStatus.ConnectedBitmask & (1u << LastHostID));
+    Mutex_Unlock(MPQueueLock);
+    if (disconnected) return -1;
 
     return RecvPacketGeneric(inst, packet, true, timestamp);
 }
@@ -362,7 +485,7 @@ u16 LocalMP::RecvReplies(int inst, u8* packets, u64 timestamp, u16 aidmask)
 
         Mutex_Lock(MPQueueLock);
 
-        MPPacketHeader pktheader = {};
+        RoutedPacketHeader pktheader = {};
         FIFORead(inst, 1, &pktheader, sizeof(pktheader));
 
         if (pktheader.Magic != 0x4946494E)
@@ -374,7 +497,7 @@ u16 LocalMP::RecvReplies(int inst, u8* packets, u64 timestamp, u16 aidmask)
             return 0;
         }
 
-        if ((pktheader.SenderID == inst) || // packet we sent out (shouldn't happen, but hey)
+        if ((pktheader.SenderID == inst) || !(pktheader.Targets & (1u << inst)) || // excluded by router
             (pktheader.Timestamp < (timestamp - 32))) // stale packet
         {
             // skip this packet

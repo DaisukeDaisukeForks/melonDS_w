@@ -23,9 +23,11 @@
 #include "Platform.h"
 #include "MPInterface.h"
 #include <array>
+#include <vector>
 
 namespace melonDS
 {
+class Savestate;
 struct MPStatusData
 {
     u16 ConnectedBitmask; // bitmask of which instances are ready to send/receive packets
@@ -56,6 +58,13 @@ public:
         std::array<u8, kMaxFrameSize> Payload;
     };
     static constexpr u32 kLogCapacity = 256;
+    struct HeldPacket { u32 Id; int Sender; u32 Type; u64 Timestamp; u16 Targets; u16 Length; std::array<u8, kMaxFrameSize> Payload; };
+    void SetPacketInterceptor(int inst, bool enabled);
+    void ClearPacketControl(int inst);
+    void SetPacketRoutes(int inst, u16 targets);
+    u32 CopyHeldPackets(int inst, HeldPacket* output, u32 capacity);
+    int CommitPacket(int inst, u32 id, bool drop, const u8* data, int length, int targets, double timestamp);
+    int InjectPacket(int inst, u32 type, const u8* data, int length, u64 timestamp, u16 targets);
 
     LocalMP() noexcept;
     LocalMP(const LocalMP&) = delete;
@@ -65,9 +74,13 @@ public:
     ~LocalMP() noexcept;
 
     void Process() {}
+    void DoTransportState(Savestate* state, void (*semaphoreState)(Savestate*, Platform::Semaphore*));
 
     void Begin(int inst);
     void End(int inst);
+    // In-process multi-console frontends supply each radio's actual addresses.
+    // This is routing metadata only: emulated frames are never rewritten.
+    void SetPeer(int inst, const u8* mac, const u8* bssid);
 
     int SendPacket(int inst, u8* data, int len, u64 timestamp);
     int RecvPacket(int inst, u8* data, u64* timestamp);
@@ -84,7 +97,7 @@ public:
 private:
     void FIFORead(int inst, int fifo, void* buf, int len) noexcept;
     void FIFOWrite(int inst, int fifo, void* buf, int len) noexcept;
-    int SendPacketGeneric(int inst, u32 type, u8* packet, int len, u64 timestamp) noexcept;
+    int SendPacketGeneric(int inst, u32 type, const u8* packet, int len, u64 timestamp, bool bypass = false, int targets = -1) noexcept;
     int RecvPacketGeneric(int inst, u8* packet, bool block, u64* timestamp) noexcept;
     void LogPacket(int sender, int receiver, u32 type, const u8* packet,
                    int length, u64 timestamp, bool received) noexcept;
@@ -97,12 +110,19 @@ private:
     u32 ReplyReadOffset[16] {};
 
     int LastHostID = -1;
+    std::array<std::array<u8, 6>, 16> PeerMAC {};
+    std::array<std::array<u8, 6>, 16> PeerBSSID {};
+    u16 PeersKnown = 0;
     Platform::Semaphore* SemPool[32] {};
     std::array<PacketLogEntry, kLogCapacity> PacketLog {};
     u32 LogRead = 0;
     u32 LogCount = 0;
     u32 LogSequence = 0;
     u32 LogDropped = 0;
+    u16 InterceptMask = 0;
+    std::array<u16, 16> RouteMasks {0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff};
+    std::vector<HeldPacket> HeldPackets;
+    u32 NextHeldId = 1;
 };
 }
 

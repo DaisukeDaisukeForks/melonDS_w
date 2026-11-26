@@ -21,6 +21,7 @@
 #include "NDS.h"
 #include "Wifi.h"
 #include "WifiAP.h"
+#include "Savestate.h"
 #include "Platform.h"
 
 #ifndef __WIN32__
@@ -29,6 +30,19 @@
 
 namespace melonDS
 {
+void WifiAP::DoTransportState(Savestate* state)
+{
+    u32 length = static_cast<u32>(SSID.size());
+    state->Var32(&length);
+    if (length > 32) { state->Error = true; return; }
+    if (!state->Saving) SSID.resize(length);
+    state->VarArray(SSID.data(), length);
+    state->Var64(&USCounter); state->Var16(&SeqNo); state->VarBool(&BeaconDue);
+    state->VarArray(PacketBuffer, sizeof(PacketBuffer));
+    state->VarArray(&PacketLen, sizeof(PacketLen)); state->VarArray(&RXNum, sizeof(RXNum));
+    state->VarArray(LANBuffer, sizeof(LANBuffer)); state->VarArray(&ClientStatus, sizeof(ClientStatus));
+    if (PacketLen < 0 || PacketLen > static_cast<int>(sizeof(PacketBuffer))) state->Error = true;
+}
 using Platform::Log;
 using Platform::LogLevel;
 
@@ -176,8 +190,8 @@ int WifiAP::HandleManagementFrame(const u8* data, int len)
             PWRITE_16(p, 0x0021); // capability
             PWRITE_8(p, 0x01); PWRITE_8(p, 0x02); PWRITE_8(p, 0x82); PWRITE_8(p, 0x84); // rates
             PWRITE_8(p, 0x03); PWRITE_8(p, 0x01); PWRITE_8(p, APChannel); // current channel
-            PWRITE_8(p, 0x00); PWRITE_8(p, strlen(APName));
-            memcpy(p, APName, strlen(APName)); p += strlen(APName);
+            PWRITE_8(p, 0x00); PWRITE_8(p, SSID.size());
+            memcpy(p, SSID.data(), SSID.size()); p += SSID.size();
 
             PacketLen = PLEN(p, base);
             RXNum = 1;
@@ -333,8 +347,8 @@ int WifiAP::RecvPacket(u8* data)
         PWRITE_8(p, 0x01); PWRITE_8(p, 0x02); PWRITE_8(p, 0x82); PWRITE_8(p, 0x84); // rates
         PWRITE_8(p, 0x03); PWRITE_8(p, 0x01); PWRITE_8(p, APChannel); // current channel
         PWRITE_8(p, 0x05); PWRITE_8(p, 0x04); PWRITE_8(p, 0); PWRITE_8(p, 0); PWRITE_8(p, 0); PWRITE_8(p, 0); // TIM
-        PWRITE_8(p, 0x00); PWRITE_8(p, strlen(APName));
-        memcpy(p, APName, strlen(APName)); p += strlen(APName);
+        PWRITE_8(p, 0x00); PWRITE_8(p, SSID.size());
+        memcpy(p, SSID.data(), SSID.size()); p += SSID.size();
 
         PALIGN_4(p, base);
         PWRITE_32(p, 0xDEADBEEF); // checksum. doesn't matter for now

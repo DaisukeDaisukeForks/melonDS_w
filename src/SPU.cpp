@@ -1082,6 +1082,12 @@ void SPU::InitOutput()
     u32 newBufferSize = 512;
     while (newBufferSize < needSamples)
         newBufferSize <<= 1;
+
+#ifdef __EMSCRIPTEN__
+    // Browser RPC (e.g. exporting a state) can delay the audio drain even
+    // while the emulation pthread runs. Retain that short delivery backlog.
+    newBufferSize = std::max(newBufferSize, 8192u);
+#endif
     newBufferSize <<= 1;
 
     if (newBufferSize != OutputBufferSize)
