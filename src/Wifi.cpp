@@ -254,6 +254,17 @@ void Wifi::SetAccessPointSSID(const char* name, size_t length)
 {
     WifiAP->SetSSID(name, length);
 }
+
+bool Wifi::ConfigureAccessPoint(int slot, const u8* ssid, int length, int security, const u8* key,
+                                int keyLength, int channel, const u8* mac)
+{
+    return WifiAP->ConfigureAP(slot, ssid, length, security, key, keyLength, channel, mac);
+}
+
+bool Wifi::RemoveAccessPoint(int slot)
+{
+    return WifiAP->RemoveAP(slot);
+}
 void Wifi::DoTransportState(Savestate* state)
 {
     WifiAP->DoTransportState(state);
