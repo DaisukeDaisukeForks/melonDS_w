@@ -162,6 +162,8 @@ public:
     ~Wifi();
     void Reset();
     void SetAccessPointSSID(const char* name, size_t length);
+    bool ConfigureAccessPoint(int slot, const u8* ssid, int length, int security, const u8* key, int keyLength, int channel, const u8* mac);
+    bool RemoveAccessPoint(int slot);
     void DoTransportState(Savestate* state);
     void DoSavestate(Savestate* file);
 
