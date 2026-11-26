@@ -21,6 +21,7 @@
 
 #include "types.h"
 #include <string>
+#include <array>
 
 namespace melonDS
 {
@@ -34,7 +35,9 @@ public:
     ~WifiAP();
     void Reset();
     void DoTransportState(Savestate* state);
-    void SetSSID(const char* value, size_t length) { SSID.assign(value, length > 32 ? 32 : length); }
+    void SetSSID(const char* value, size_t length);
+    bool ConfigureAP(int slot, const u8* ssid, int length, int security, const u8* key, int keyLength, int channel, const u8* mac);
+    bool RemoveAP(int slot);
 
     static const char* APName;
     static const u8 APMac[6];
@@ -47,7 +50,25 @@ public:
     int RecvPacket(u8* data);
 
 private:
-    std::string SSID = APName;
+    struct APProfile {
+        bool enabled = false;
+        bool configured = false;
+        std::string ssid;
+        std::array<u8, 6> mac{};
+        u8 channel = 6;
+        u8 security = 0;
+        std::array<u8, 13> key{};
+        u8 keyLength = 0;
+    };
+    static constexpr int MaxAPs = 8;
+    std::array<APProfile, MaxAPs> Profiles{};
+    int ConnectedAP = -1;
+    u32 PendingBeacons = 0;
+    u32 PendingProbes = 0;
+    std::array<u8, 6> ProbeClient{};
+    int ProbeChannel = 6;
+    int FindAP(const u8* mac) const;
+    int BuildAnnouncement(u8* out, int slot, bool probe);
     Wifi* Client;
     void* UserData;
 
