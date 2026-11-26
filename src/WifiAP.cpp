@@ -44,6 +44,7 @@ void WifiAP::DoTransportState(Savestate* state)
     state->VarArray(PacketBuffer, sizeof(PacketBuffer));
     state->VarArray(&PacketLen, sizeof(PacketLen)); state->VarArray(&RXNum, sizeof(RXNum));
     state->VarArray(LANBuffer, sizeof(LANBuffer)); state->VarArray(&ClientStatus, sizeof(ClientStatus));
+    if (!state->Saving) ConnectedAP = ClientStatus && Profiles[0].enabled ? 0 : -1;
     if (PacketLen < 0 || PacketLen > static_cast<int>(sizeof(PacketBuffer))) state->Error = true;
 }
 using Platform::Log;
@@ -67,13 +68,13 @@ const u8 WifiAP::APChannel = 6;
 
 #define PWRITE_SEQNO(p)     PWRITE_16(p, SeqNo); SeqNo += 0x10;
 
-#define PWRITE_TXH(p, len, rate) \
+#define PWRITE_TXH(p, len, rate, channel) \
     PWRITE_16(p, 0); \
     PWRITE_16(p, 0); \
     PWRITE_16(p, 0); \
     PWRITE_16(p, 0); \
     PWRITE_8(p, rate); \
-    PWRITE_8(p, APChannel); \
+    PWRITE_8(p, channel); \
     PWRITE_16(p, len);
 
 //#define PALIGN_4(p, base)  p += ((4 - ((ptrdiff_t)(p-base) & 0x3)) & 0x3);
@@ -221,7 +222,7 @@ int WifiAP::HandleManagementFrame(const u8* data, int len)
         return 0;
     }
 
-    if (len < 12 + 24) return 0;
+    if (len < 12 + 24 + 4) return 0;
     u16 framectl = *(u16*)&data[0];
     const int targetAP = FindAP(&data[16]);
     const u8* targetMac = targetAP >= 0 ? Profiles[targetAP].mac.data() : APMac;
@@ -230,7 +231,7 @@ int WifiAP::HandleManagementFrame(const u8* data, int len)
         // Probe requests have either a wildcard SSID or an SSID information element.
         std::string requested;
         bool foundSSID = false;
-        const int end = len - 12;
+        const int end = len - 12 - 4;
         for (int pos = 24; pos + 2 <= end;) {
             const int kind = data[pos++], size = data[pos++];
             if (pos + size > end) return 0;
@@ -284,31 +285,6 @@ int WifiAP::HandleManagementFrame(const u8* data, int len)
         }
         return len;
 
-    case 0x4: // probe request
-        {
-            // Nintendo's WFC setup util sends probe requests when searching for APs
-            // these should be replied with a probe response, which is almost like a beacon
-
-            PWRITE_16(p, 0x0050);
-            PWRITE_16(p, 0x0000); // duration??
-            PWRITE_MAC2(p, (&data[10])); // recv
-            PWRITE_MAC2(p, APMac); // sender
-            PWRITE_MAC2(p, APMac); // BSSID (checkme)
-            PWRITE_SEQNO(p);
-
-            PWRITE_64(p, USCounter);
-            PWRITE_16(p, 128); // beacon interval
-            PWRITE_16(p, 0x0021); // capability
-            PWRITE_8(p, 0x01); PWRITE_8(p, 0x02); PWRITE_8(p, 0x82); PWRITE_8(p, 0x84); // rates
-            PWRITE_8(p, 0x03); PWRITE_8(p, 0x01); PWRITE_8(p, APChannel); // current channel
-            PWRITE_8(p, 0x00); PWRITE_8(p, Profiles[0].ssid.size());
-            memcpy(p, Profiles[0].ssid.data(), Profiles[0].ssid.size()); p += Profiles[0].ssid.size();
-
-            PacketLen = PLEN(p, base);
-            RXNum = 1;
-        }
-        return len;
-
     case 0xA: // deassoc
         {
             if (!targetMatches || ConnectedAP != targetAP) return 0;
@@ -332,7 +308,7 @@ int WifiAP::HandleManagementFrame(const u8* data, int len)
 
     case 0xB: // auth
         {
-            if (!targetMatches || len < 12 + 30 || *(const u16*)(data + 24) != 0) return 0;
+            if (!targetMatches || len < 12 + 30 + 4 || *(const u16*)(data + 24) != 0) return 0;
             ConnectedAP = targetAP;
             ClientStatus = 1;
             Log(LogLevel::Debug, "wifiAP: client authenticated\n");
@@ -399,7 +375,7 @@ int WifiAP::SendPacket(const u8* data, int len)
 
     case 2: // data
         {
-            if (ConnectedAP < 0 || !Profiles[ConnectedAP].enabled ||
+            if (len < 12 + 32 + 4 || ConnectedAP < 0 || !Profiles[ConnectedAP].enabled ||
                 Profiles[ConnectedAP].channel != ProbeChannel ||
                 !MACEqual(data + 4, Profiles[ConnectedAP].mac.data()) ||
                 (framectl & 0x0300) != 0x0100)
@@ -418,12 +394,14 @@ int WifiAP::SendPacket(const u8* data, int len)
                     return 0;
                 }
 
-                int lan_len = (len - 30 - 4) + 14;
+                const int payloadLength = len - 12 - 32 - 4;
+                if (payloadLength > static_cast<int>(sizeof(LANBuffer)) - 14) return 0;
+                const int lan_len = 14 + payloadLength;
 
                 memcpy(&LANBuffer[0], &data[16], 6); // destination MAC
                 memcpy(&LANBuffer[6], &data[10], 6); // source MAC
                 *(u16*)&LANBuffer[12] = *(u16*)&data[30]; // type
-                memcpy(&LANBuffer[14], &data[32], lan_len - 14);
+                memcpy(&LANBuffer[14], &data[32], payloadLength);
 
                 Platform::Net_SendPacket(LANBuffer, lan_len, UserData);
             }
@@ -465,7 +443,7 @@ int WifiAP::RecvPacket(u8* data)
 
         int len = PLEN(p, base);
         p = data;
-        PWRITE_TXH(p, len, 20);
+        PWRITE_TXH(p, len, 20, Profiles[0].channel);
 
         return len+12;
     }
@@ -485,7 +463,8 @@ int WifiAP::RecvPacket(u8* data)
 
         int len = PLEN(p, base);
         p = data;
-        PWRITE_TXH(p, len, 20);
+        const int responseAP = FindAP(PacketBuffer + 10);
+        PWRITE_TXH(p, len, 20, responseAP >= 0 ? Profiles[responseAP].channel : APChannel);
 
         return len+12;
     }
@@ -505,6 +484,12 @@ int WifiAP::RecvPacket(u8* data)
     int rxlen = Platform::Net_RecvPacket(LANBuffer, UserData);
     while (rxlen > 0)
     {
+        // The output includes 12 hardware header bytes, a 32-byte Wi-Fi
+        // header, up to three padding bytes, and the frame checksum.
+        if (rxlen < 14 || rxlen > 2048 - 12 - 32 - 3 - 4 + 14) {
+            rxlen = Platform::Net_RecvPacket(LANBuffer, UserData);
+            continue;
+        }
         // check destination MAC
         if (!MACIsBroadcast(&LANBuffer[0]))
         {
@@ -543,7 +528,7 @@ int WifiAP::RecvPacket(u8* data)
 
         int len = PLEN(p, base);
         p = data;
-        PWRITE_TXH(p, len, 20);
+        PWRITE_TXH(p, len, 20, Profiles[ConnectedAP].channel);
 
         return len+12;
     }
