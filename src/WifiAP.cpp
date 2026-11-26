@@ -185,8 +185,8 @@ int WifiAP::BuildAnnouncement(u8* data, int slot, bool probe)
     u8* p = base;
     PWRITE_16(p, probe ? 0x0050 : 0x0080);
     PWRITE_16(p, 0);
-    if (probe) PWRITE_MAC2(p, ProbeClient.data());
-    else PWRITE_MAC(p, 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF);
+    if (probe) { PWRITE_MAC2(p, ProbeClient.data()); }
+    else { PWRITE_MAC(p, 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF); }
     PWRITE_MAC2(p, ap.mac.data());
     PWRITE_MAC2(p, ap.mac.data());
     PWRITE_SEQNO(p);
