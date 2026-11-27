@@ -767,9 +767,8 @@ void ARMv5Impl<mode>::Execute()
                 DataAbort();
                 NDS.ARM9Timestamp += Cycles;
                 Cycles = 0;
-#ifdef WEB_DEBUGGER
-                WebDebugger::AfterInstruction(this, webAddress);
-#endif
+                // The faulting instruction did not complete. Do not report it
+                // to the post-instruction debugger (which can suspend the core).
                 continue;
             }
 
