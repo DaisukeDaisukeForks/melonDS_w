@@ -202,6 +202,7 @@ void ARM::SetGdbArgs(std::optional<GDBArgs> gdb)
 void ARM::Reset()
 {
     Cycles = 0;
+    DataAbortPending = false;
     Halted = 0;
 
     IRQ = 0;
@@ -758,6 +759,18 @@ void ARMv5Impl<mode>::Execute()
                 }
                 else
                     AddCycles_C();
+            }
+
+            if (DataAbortPending)
+            {
+                DataAbortPending = false;
+                DataAbort();
+                NDS.ARM9Timestamp += Cycles;
+                Cycles = 0;
+#ifdef WEB_DEBUGGER
+                WebDebugger::AfterInstruction(this, webAddress);
+#endif
+                continue;
             }
 
             // TODO optimize this shit!!!

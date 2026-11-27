@@ -179,6 +179,7 @@ public:
     u32 R_IRQ[3];
     u32 R_UND[3];
     u32 CurInstr;
+    bool DataAbortPending = false; // Interpreter-only, cleared at the instruction boundary.
     u32 NextInstr[2];
 
     u32 ExceptionBase;
