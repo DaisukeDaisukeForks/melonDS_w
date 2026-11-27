@@ -26,6 +26,16 @@
 #include "Savestate.h"
 #include "Platform.h"
 
+#ifdef WEB_DEBUGGER
+namespace melonDS::Platform {
+void WebWifiTrace(void* userdata, unsigned stage, unsigned length,
+                  unsigned a, unsigned b, unsigned c, unsigned d);
+}
+#define WEB_WIFI_TRACE(...) Platform::WebWifiTrace(__VA_ARGS__)
+#else
+#define WEB_WIFI_TRACE(...) ((void)0)
+#endif
+
 #ifndef __WIN32__
 #include <stddef.h>
 #endif
@@ -488,6 +498,7 @@ int WifiAP::RecvPacket(u8* data)
         // The output includes 12 hardware header bytes, a 32-byte Wi-Fi
         // header, up to three padding bytes, and the frame checksum.
         if (rxlen < 14 || rxlen > 2048 - 12 - 32 - 3 - 4 + 14) {
+            WEB_WIFI_TRACE(UserData, 10, rxlen, 0, 0, 0, 0);
             rxlen = Platform::Net_RecvPacket(LANBuffer, UserData);
             continue;
         }
@@ -496,6 +507,7 @@ int WifiAP::RecvPacket(u8* data)
         {
             if (!MACEqual(&LANBuffer[0], Client->GetMAC()))
             {
+                WEB_WIFI_TRACE(UserData, 11, rxlen, 0, 0, 0, 0);
                 rxlen = Platform::Net_RecvPacket(LANBuffer, UserData);
                 continue;
             }
@@ -503,6 +515,7 @@ int WifiAP::RecvPacket(u8* data)
 
         if (MACEqual(&LANBuffer[6], Client->GetMAC()))
         {
+            WEB_WIFI_TRACE(UserData, 12, rxlen, 0, 0, 0, 0);
             rxlen = Platform::Net_RecvPacket(LANBuffer, UserData);
             continue;
         }
@@ -531,6 +544,8 @@ int WifiAP::RecvPacket(u8* data)
         p = data;
         PWRITE_TXH(p, len, 20, Profiles[ConnectedAP].channel);
 
+        WEB_WIFI_TRACE(UserData, 13, rxlen, static_cast<u16>(SeqNo - 0x10),
+                       len, Profiles[ConnectedAP].channel, ConnectedAP);
         return len+12;
     }
 

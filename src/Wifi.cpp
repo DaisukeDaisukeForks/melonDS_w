@@ -24,6 +24,16 @@
 #include "WifiAP.h"
 #include "Platform.h"
 
+#ifdef WEB_DEBUGGER
+namespace melonDS::Platform {
+void WebWifiTrace(void* userdata, unsigned stage, unsigned length,
+                  unsigned a, unsigned b, unsigned c, unsigned d);
+}
+#define WEB_WIFI_TRACE(...) Platform::WebWifiTrace(__VA_ARGS__)
+#else
+#define WEB_WIFI_TRACE(...) ((void)0)
+#endif
+
 namespace melonDS
 {
 using Platform::Log;
@@ -1266,6 +1276,10 @@ void Wifi::StartRX()
     IOPORT(W_RXTXAddr) = addr >> 1;
 
     RXBufferPtr = 12;
+    WEB_WIFI_TRACE(NDS.UserData, 23, framelen,
+                   framelen >= 24 ? *(u16*)&RXBuffer[34] : 0,
+                   framelen >= 2 ? *(u16*)&RXBuffer[12] : 0,
+                   txrate, IOPORT(W_RXBufWriteCursor));
 
     SetIRQ(6);
     SetStatus(6);
@@ -1301,7 +1315,7 @@ void Wifi::FinishRX()
     if (!(dstmac[0] & 0x01))
     {
         if (!MACEqual(dstmac, (u8*)&IOPORT(W_MACAddr0)))
-            return;
+            { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 1, IOPORT(W_RXFilter)); return; }
     }
 
     // reject the frame if it's a WEP frame and WEP is off
@@ -1310,7 +1324,7 @@ void Wifi::FinishRX()
     if (framectl & (1<<14))
     {
         if (!(IOPORT(W_WEPCnt) & (1<<15)))
-            return;
+            { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 2, IOPORT(W_RXFilter)); return; }
     }
 
     // apply RX filtering
@@ -1336,7 +1350,7 @@ void Wifi::FinishRX()
                 if (!(rxflags & 0x8000))
                 {
                     if (!(IOPORT(W_RXFilter) & (1<<0)))
-                        return;
+                        { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 3, IOPORT(W_RXFilter)); return; }
                 }
 
                 rxflags |= 0x0001;
@@ -1348,7 +1362,7 @@ void Wifi::FinishRX()
                 {
                     // CHECKME!
                     if (!(IOPORT(W_RXFilter) & (3<<9)))
-                        return;
+                        { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 4, IOPORT(W_RXFilter)); return; }
                 }
             }
         }
@@ -1365,13 +1379,13 @@ void Wifi::FinishRX()
                 if (!(rxflags & 0x8000))
                 {
                     if (!(IOPORT(W_RXFilter) & (1<<11)))
-                        return;
+                        { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 5, IOPORT(W_RXFilter)); return; }
                 }
 
                 rxflags |= 0x0005;
             }
             else
-                return;
+                { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 6, IOPORT(W_RXFilter)); return; }
         }
         break;
 
@@ -1379,7 +1393,7 @@ void Wifi::FinishRX()
         {
             u16 fromto = (framectl >> 8) & 0x3;
             if (IOPORT(W_RXFilter2) & (1<<fromto))
-                return;
+                { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 7, IOPORT(W_RXFilter)); return; }
 
             int bssidoffset[4] = {16, 4, 10, 0};
             if (bssidoffset[fromto])
@@ -1394,13 +1408,13 @@ void Wifi::FinishRX()
             if (!(rxflags & 0x8000))
             {
                 if (!(rxfilter & (1<<11)))
-                    return;
+                    { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 8, IOPORT(W_RXFilter)); return; }
             }
 
             if (framectl & (1<<11)) // retransmit
             {
                 if (!(rxfilter & (1<<0)))
-                    return;
+                    { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 9, IOPORT(W_RXFilter)); return; }
             }
 
             // check for MP frames
@@ -1443,23 +1457,23 @@ void Wifi::FinishRX()
             case 0x1:
                 if ((rxflags & 0xF) == 0xD)
                 {
-                    if (!(rxfilter & (1<<7))) return;
+                    if (!(rxfilter & (1<<7))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 10, IOPORT(W_RXFilter)); return; }
                 }
                 else if ((rxflags & 0xF) != 0xE)
                 {
-                    if (!(rxfilter & (1<<1))) return;
+                    if (!(rxfilter & (1<<1))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 11, IOPORT(W_RXFilter)); return; }
                 }
                 break;
 
             case 0x2:
                 if ((rxflags & 0xF) != 0xC)
                 {
-                    if (!(rxfilter & (1<<2))) return;
+                    if (!(rxfilter & (1<<2))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 12, IOPORT(W_RXFilter)); return; }
                 }
                 break;
 
             case 0x3:
-                if (!(rxfilter & (1<<3))) return;
+                if (!(rxfilter & (1<<3))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 13, IOPORT(W_RXFilter)); return; }
                 break;
 
             case 0x4: break;
@@ -1467,24 +1481,24 @@ void Wifi::FinishRX()
             case 0x5:
                 if ((rxflags & 0xF) == 0xF)
                 {
-                    if (!(rxfilter & (1<<8))) return;
+                    if (!(rxfilter & (1<<8))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 14, IOPORT(W_RXFilter)); return; }
                 }
                 else
                 {
-                    if (!(rxfilter & (1<<4))) return;
+                    if (!(rxfilter & (1<<4))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 15, IOPORT(W_RXFilter)); return; }
                 }
                 break;
 
             case 0x6:
-                if (!(rxfilter & (1<<5))) return;
+                if (!(rxfilter & (1<<5))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 16, IOPORT(W_RXFilter)); return; }
                 break;
 
             case 0x7:
-                if (!(rxfilter & (1<<6))) return;
+                if (!(rxfilter & (1<<6))) { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 17, IOPORT(W_RXFilter)); return; }
                 break;
 
             default:
-                return;
+                { WEB_WIFI_TRACE(NDS.UserData, 24, *(u16*)&RXBuffer[8], seqno, framectl, 18, IOPORT(W_RXFilter)); return; }
             }
         }
         break;
@@ -1512,7 +1526,11 @@ void Wifi::FinishRX()
         IOPORT(W_RXBufWriteCursor) = (addr & ~0x3) >> 1;
 
         SetIRQ(0);
+        WEB_WIFI_TRACE(NDS.UserData, 25, *(u16*)&RXBuffer[8], seqno,
+                       framectl, rxflags, IOPORT(W_RXBufWriteCursor));
     }
+    else
+        WEB_WIFI_TRACE(NDS.UserData, 27, *(u16*)&RXBuffer[8], seqno, framectl, 0, 0);
 
     if ((rxflags & 0x800F) == 0x800C)
     {
@@ -1631,11 +1649,15 @@ bool Wifi::CheckRX(int type) // 0=regular 1=MP replies 2=MP host frames
         }
 
         if (rxlen <= 0) return false;
-        if (rxlen < 12+24) continue;
+        if (rxlen < 12+24) {
+            WEB_WIFI_TRACE(NDS.UserData, 20, rxlen, 0, 0, 0, 0);
+            continue;
+        }
 
         framelen = *(u16*)&RXBuffer[10];
         if (framelen != rxlen-12)
         {
+            WEB_WIFI_TRACE(NDS.UserData, 20, rxlen, framelen, rxlen-12, 0, 0);
             Log(LogLevel::Error, "bad frame length %d/%d\n", framelen, rxlen-12);
             continue;
         }
@@ -1643,6 +1665,7 @@ bool Wifi::CheckRX(int type) // 0=regular 1=MP replies 2=MP host frames
         chan = RXBuffer[9];
         if (chan != CurChannel || CurChannel == 0)
         {
+            WEB_WIFI_TRACE(NDS.UserData, 21, framelen, chan, CurChannel, *(u16*)&RXBuffer[34], 0);
             Log(LogLevel::Debug, "received frame but bad channel %d (expected %d)\n", chan, CurChannel);
             continue;
         }
@@ -1941,6 +1964,9 @@ void Wifi::USTimer(u32 param)
             }
             else if (addr == (IOPORT(W_RXBufReadCursor) << 1))
             {
+                WEB_WIFI_TRACE(NDS.UserData, 26, *(u16*)&RXBuffer[8],
+                               *(u16*)&RXBuffer[34], IOPORT(W_RXBufReadCursor),
+                               IOPORT(W_RXBufWriteCursor), IOPORT(W_RXTXAddr));
                 // TODO: properly check the crossing of the read cursor
                 // (for example, if it is outside of the RX buffer)
 
