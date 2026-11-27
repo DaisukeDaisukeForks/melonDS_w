@@ -22,6 +22,7 @@
 #include "types.h"
 #include <string>
 #include <array>
+#include <vector>
 
 namespace melonDS
 {
@@ -57,8 +58,7 @@ private:
         std::array<u8, 6> mac{};
         u8 channel = 6;
         u8 security = 0;
-        std::array<u8, 13> key{};
-        u8 keyLength = 0;
+        std::vector<u8> key;
     };
     static constexpr int MaxAPs = 8;
     std::array<APProfile, MaxAPs> Profiles{};

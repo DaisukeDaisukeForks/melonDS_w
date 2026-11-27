@@ -104,20 +104,21 @@ void WifiAP::SetSSID(const char* value, size_t length)
 bool WifiAP::ConfigureAP(int slot, const u8* ssid, int length, int security, const u8* key,
                          int keyLength, int channel, const u8* mac)
 {
-    if (slot < 0 || slot >= MaxAPs || !ssid || length < 1 || length > 32 || !mac ||
+    // The SSID information element has a one-byte length field. The API
+    // accepts opaque bytes, including empty SSIDs, without the standard 32-byte policy.
+    if (slot < 0 || slot >= MaxAPs || length < 0 || length > 255 || (length && !ssid) || !mac ||
         (mac[0] & 1) || channel < 1 || channel > 14 || security < 0 || security > 2 ||
-        keyLength != (security == 0 ? 0 : security == 1 ? 5 : 13) || (keyLength && !key)) return false;
+        keyLength < 0 || (keyLength && !key)) return false;
     for (int i = 0; i < MaxAPs; ++i)
         if (i != slot && Profiles[i].enabled &&
             std::equal(Profiles[i].mac.begin(), Profiles[i].mac.end(), mac)) return false;
     APProfile profile;
     profile.enabled = profile.configured = true;
-    profile.ssid.assign(reinterpret_cast<const char*>(ssid), length);
+    if (length) profile.ssid.assign(reinterpret_cast<const char*>(ssid), length);
     std::copy(mac, mac + 6, profile.mac.begin());
     profile.channel = static_cast<u8>(channel);
     profile.security = static_cast<u8>(security);
-    profile.keyLength = static_cast<u8>(keyLength);
-    if (keyLength) std::copy(key, key + keyLength, profile.key.begin());
+    if (keyLength) profile.key.assign(key, key + keyLength);
     Profiles[slot] = std::move(profile);
     PendingBeacons |= (1U << slot);
     PendingProbes &= ~(1U << slot);
